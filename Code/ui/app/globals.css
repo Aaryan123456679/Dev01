@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+/* ---------------------------------------------------------------------------
+   Light theme — toggled from Settings → Appearance (adds .theme-light to <html>).
+   Overrides the dark surface utilities used across the app so the toggle has a
+   real, visible effect without rewriting every component.
+--------------------------------------------------------------------------- */
+html.theme-light body { background: #f8fafc; }
+html.theme-light .bg-gray-950 { background-color: #ffffff !important; }
+html.theme-light .bg-gray-900 { background-color: #f1f5f9 !important; }
+html.theme-light .bg-gray-800 { background-color: #e2e8f0 !important; }
+html.theme-light .text-white { color: #0f172a !important; }
+html.theme-light .text-gray-200 { color: #1e293b !important; }
+html.theme-light .text-gray-300 { color: #334155 !important; }
+html.theme-light .text-gray-400 { color: #475569 !important; }
+html.theme-light .border-gray-800 { border-color: #cbd5e1 !important; }
+html.theme-light .border-gray-700 { border-color: #cbd5e1 !important; }

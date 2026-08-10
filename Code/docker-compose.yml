@@ -1,0 +1,42 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      target: builder
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 8000
+      GEMINI_DEFAULT_MODEL: gemini-3.5-flash
+      GEMINI_EMBEDDING_MODEL: gemini-embedding-001
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-e2b}
+      ALLOWED_ORIGINS: http://localhost:3000
+      RATE_LIMIT_MAX: 60
+      RATE_LIMIT_WINDOW_MS: 60000
+    volumes:
+      - ./backend/src:/app/src
+    command: ["node", "dist/index.js"]
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - ./ui:/app
+      - /app/node_modules
+      - /app/.next
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes: {}

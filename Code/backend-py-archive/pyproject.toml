@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "project-dev01"
+version = "0.1.0"
+description = "MCP-Driven Multi-Tenant Execution Platform"
+authors = ["Dev01"]
+readme = "README.md"
+packages = [{include = "backend", from = "Code"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["all"], version = "^0.104.0"}
+uvicorn = "^0.23.0"
+sqlalchemy = "^2.0.0"
+alembic = "^1.12.0"
+psycopg2-binary = "^2.9.0"
+pydantic = "^2.4.0"
+pydantic-settings = "^2.0.0"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+redis = "^5.0.0"
+docker = "^7.0.0"
+openai = "^1.3.0"
+python-multipart = "^0.0.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
