@@ -82,6 +82,10 @@ export class GeminiProvider implements LLMProvider {
   readonly defaultModel: string
   private readonly embeddingModel: string
   private readonly client: GoogleGenerativeAI
+  // Models (and aliases like "-latest", which Google silently repoints over time)
+  // that reject thinkingConfig outright. Learned at runtime on first 400 rather
+  // than hardcoded by name, since alias targets change without notice.
+  private readonly noThinkingConfig = new Set<string>()
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY
@@ -93,11 +97,11 @@ export class GeminiProvider implements LLMProvider {
 
   async generate(request: GenerateRequest): Promise<GenerateResponse> {
     const modelId = request.model && isValidModel(request.model) ? request.model : this.defaultModel
-    const isThinkingModel = modelId.includes('2.5')
     const MAX_RETRIES = 3
     let lastErr: Error | undefined
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt))
+      const sendThinkingConfig = !modelId.includes('2.5') && !this.noThinkingConfig.has(modelId)
     try {
       const systemInstruction = request.systemPrompt
         ? { role: 'user' as const, parts: [{ text: request.systemPrompt }] }
@@ -110,7 +114,7 @@ export class GeminiProvider implements LLMProvider {
         generationConfig: {
           temperature: request.temperature ?? 0.7,
           maxOutputTokens: request.maxOutputTokens ?? 8192,
-          ...(isThinkingModel ? {} : { thinkingConfig: { thinkingBudget: 0 } }),
+          ...(sendThinkingConfig ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         } as GenerationConfig,
       })
 
@@ -174,6 +178,14 @@ export class GeminiProvider implements LLMProvider {
     } catch (err) {
       if (err instanceof ProviderError) throw err
       const msg = (err as Error).message
+      // Some models (and "-latest" aliases, whose target Google repoints over
+      // time) reject thinkingConfig with a 400. Learn that and retry once
+      // without it, without spending a normal backoff attempt.
+      if (sendThinkingConfig && /400|invalid argument/i.test(msg)) {
+        this.noThinkingConfig.add(modelId)
+        attempt--
+        continue
+      }
       // Retry transient errors (503 / 429 with retry delay) but fail fast on quota exhaustion.
       const isQuota = /quota|resource_exhausted/i.test(msg)
       const isTransient = /503|service unavailable|overloaded|too many requests/i.test(msg)
@@ -186,25 +198,40 @@ export class GeminiProvider implements LLMProvider {
 
   async *stream(request: GenerateRequest): AsyncGenerator<GenerateChunk> {
     const modelId = request.model && isValidModel(request.model) ? request.model : this.defaultModel
-    const isThinkingModel = modelId.includes('2.5')
     try {
       const systemInstruction = request.systemPrompt
         ? { role: 'user' as const, parts: [{ text: request.systemPrompt }] }
         : undefined
-
-      const model = this.client.getGenerativeModel({
-        model: modelId,
-        systemInstruction,
-        safetySettings: SAFETY_SETTINGS,
-        generationConfig: {
-          temperature: request.temperature ?? 0.7,
-          maxOutputTokens: request.maxOutputTokens ?? 8192,
-          ...(isThinkingModel ? {} : { thinkingConfig: { thinkingBudget: 0 } }),
-        } as GenerationConfig,
-      })
-
       const contents = toGeminiContent(request.messages)
-      const streamResult = await model.generateContentStream({ contents })
+
+      const startStream = (sendThinkingConfig: boolean) => {
+        const model = this.client.getGenerativeModel({
+          model: modelId,
+          systemInstruction,
+          safetySettings: SAFETY_SETTINGS,
+          generationConfig: {
+            temperature: request.temperature ?? 0.7,
+            maxOutputTokens: request.maxOutputTokens ?? 8192,
+            ...(sendThinkingConfig ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          } as GenerationConfig,
+        })
+        return model.generateContentStream({ contents })
+      }
+
+      const sendThinkingConfig = !modelId.includes('2.5') && !this.noThinkingConfig.has(modelId)
+      let streamResult: Awaited<ReturnType<typeof startStream>>
+      try {
+        streamResult = await startStream(sendThinkingConfig)
+      } catch (err) {
+        // See the comment in generate() — "-latest" aliases can start rejecting
+        // thinkingConfig once Google repoints them without notice.
+        if (sendThinkingConfig && /400|invalid argument/i.test((err as Error).message)) {
+          this.noThinkingConfig.add(modelId)
+          streamResult = await startStream(false)
+        } else {
+          throw err
+        }
+      }
 
       for await (const chunk of streamResult.stream) {
         const text = chunk.text()
